@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "UX Auditor - Stealth Mode",
+  "version": "2.0",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Controle de Gravação"
+  },
+  "background": {
+    "service_worker": "src/scripts/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/scripts/content.js"] 
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage" 
+  ]
+}

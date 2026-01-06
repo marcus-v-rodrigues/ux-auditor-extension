@@ -1,0 +1,22 @@
+body {
+  width: 300px;
+  font-family: Arial, sans-serif;
+  padding: 0;
+  margin: 0;
+}
+
+.popup-container {
+  padding: 20px;
+  background-color: #f4f4f4;
+  text-align: center;
+}
+
+h1 {
+  font-size: 18px;
+  color: #333;
+}
+
+p {
+  font-size: 14px;
+  color: #666;
+}
