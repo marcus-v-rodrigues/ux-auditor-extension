@@ -2,11 +2,12 @@
   Estilos globais do corpo do Popup.
   Define a largura fixa da janela da extensão e reseta margens/paddings.
 */
-body {
-  width: 300px;
-  font-family: Arial, sans-serif;
-  padding: 0;
+
+html, body {
   margin: 0;
+  padding: 0;
+  background-color: transparent;
+  overflow: hidden;
 }
 
 /*

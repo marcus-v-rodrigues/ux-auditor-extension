@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "UX Auditor - Stealth Mode",
+  "name": "UX Auditor Extension",
   "version": "2.0",
   "action": {
     "default_popup": "index.html",
@@ -19,6 +19,7 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage" 
+    "storage",
+    "downloads"
   ]
 }
