@@ -1,3 +1,7 @@
+/*
+  Estilos globais do corpo do Popup.
+  Define a largura fixa da janela da extensão e reseta margens/paddings.
+*/
 body {
   width: 300px;
   font-family: Arial, sans-serif;
@@ -5,17 +9,23 @@ body {
   margin: 0;
 }
 
+/*
+  Container principal do conteúdo.
+  Centraliza o texto e aplica um fundo suave.
+*/
 .popup-container {
   padding: 20px;
   background-color: #f4f4f4;
   text-align: center;
 }
 
+/* Títulos */
 h1 {
   font-size: 18px;
   color: #333;
 }
 
+/* Parágrafos e textos descritivos */
 p {
   font-size: 14px;
   color: #666;
