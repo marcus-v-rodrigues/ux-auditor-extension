@@ -8,26 +8,130 @@ html, body {
   padding: 0;
   background-color: transparent;
   overflow: hidden;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 
-/*
-  Container principal do conteúdo.
-  Centraliza o texto e aplica um fundo suave.
-*/
+/* Sistema de Design: Cores e Sombras Modernas */
+:root {
+  --primary: #6366f1;
+  --danger: #ef4444;
+  --bg: #ffffff;
+  --text: #1f2937;
+  --text-light: #6b7280;
+  --success: #22c55e;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Container principal */
 .popup-container {
+  width: 250px;
+  margin: 0;
   padding: 20px;
-  background-color: #f4f4f4;
+  background-color: var(--bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* Header */
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.popup-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.logo-indicator {
+  background-color: var(--primary);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Card de Status */
+.status-card {
+  padding: 16px;
+  border-radius: 12px;
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  margin-bottom: 16px;
   text-align: center;
 }
 
-/* Títulos */
-h1 {
-  font-size: 18px;
-  color: #333;
+.status-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-light);
+  margin-bottom: 4px;
+  font-weight: 600;
 }
 
-/* Parágrafos e textos descritivos */
-p {
+.timer {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.timer.inactive {
   font-size: 14px;
-  color: #666;
+  color: var(--text-light);
+}
+
+.timer-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Pulse Animation */
+.pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--danger);
+  box-shadow: 0 0 0 rgba(239, 68, 68, 0.4);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 1; }
+  70% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(0.95); opacity: 1; }
+}
+
+/* Botões */
+.popup-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  transition: filter 0.1s ease;
+}
+
+.popup-btn:hover {
+  filter: brightness(0.9);
+}
+
+.popup-btn.primary {
+  background-color: var(--primary);
+}
+
+.popup-btn.danger {
+  background-color: var(--danger);
 }
