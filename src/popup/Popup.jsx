@@ -74,7 +74,7 @@ export default function Popup() {
       
       <div className="status-card">
         <div className="status-label">
-          {status.isRecording ? 'Sessão em curso' : 'Status'}
+          {status.isRecording ? 'Session in progress' : 'Status'}
         </div>
         {status.isRecording ? (
           <div className="timer-container">
@@ -82,7 +82,7 @@ export default function Popup() {
             <div className="timer">{elapsed}</div>
           </div>
         ) : (
-          <div className="timer inactive">Pronto para gravar</div>
+          <div className="timer inactive">Ready to record</div>
         )}
       </div>
 
@@ -91,14 +91,14 @@ export default function Popup() {
           className="popup-btn danger"
           onClick={handleStop}
         >
-          Parar Gravação
+          Stop Recording
         </button>
       ) : (
         <button
           className="popup-btn primary"
           onClick={handleStart}
         >
-          Iniciar Auditoria
+          Start Audit
         </button>
       )}
     </div>
