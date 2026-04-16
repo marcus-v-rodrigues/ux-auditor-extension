@@ -1,16 +1,24 @@
-# React + Vite
+# UX Auditor Extension
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Extensão Chrome para captura local de sessões de interação, com replay `rrweb`, semântica da interface, heurísticas de UX e exportação de JSON.
 
-Currently, two official plugins are available:
+## O que a extensão gera
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- eventos brutos de replay
+- metadados da sessão
+- semântica da página
+- resumo comportamental
+- dinâmica de UI
+- evidências heurísticas
+- marcadores de UX
 
-## React Compiler
+## Desenvolvimento
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `npm run dev`
+- `npm run build`
+- `npm run lint`
+- `npm run preview`
 
-## Expanding the ESLint configuration
+## Documentação
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+A documentação técnica simplificada está em [docs/README.md](docs/README.md).
