@@ -1,107 +1,99 @@
-/**
- * Estado global da gravação.
- * Armazena se está gravando e o tempo de início.
- * Recuperado do storage ao iniciar para persistência entre recargas do Service Worker.
- */
+/* global chrome */
+import { createEmptySessionDraft, createCaptureConfig, createPrivacyState, mergeSessionFragment } from './session-schema.js';
+
 let recordingState = {
   isRecording: false,
-  startTime: null
+  startTime: null,
 };
 
-/**
- * Referência para o intervalo do timer do badge (ícone da extensão).
- * Mantido apenas em memória, pois intervalos não podem ser serializados para o storage.
- */
 let timerInterval = null;
 
-/**
- * Inicialização: Recupera o estado anterior do Chrome Storage.
- * Isso é crucial porque Service Workers podem ser suspensos pelo navegador
- * quando inativos, perdendo o estado da memória.
- */
-chrome.storage.local.get(['recordingState'], (result) => {
+let sessionDraft = createEmptySessionDraft();
+
+chrome.storage.local.get(['recordingState', 'sessionDraft'], (result) => {
   if (result.recordingState) {
     recordingState = result.recordingState;
     if (recordingState.isRecording) {
-      // Se a gravação estava ativa antes do reinício, retoma a atualização visual do badge
       startBadgeTimer();
     }
   }
+
+  if (result.sessionDraft) {
+    sessionDraft = result.sessionDraft;
+  }
 });
 
-/**
- * Listener central de mensagens.
- * Gerencia a comunicação entre Popup, Content Script e Background.
- */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // Verifica se a gravação está ativa (usado pelo Content Script ao carregar)
   if (request.action === 'CHECK_STATUS') {
     sendResponse({ isRecording: recordingState.isRecording });
-  }
-  
-  // Recebe pacotes de eventos do rrweb vindos do Content Script
-  else if (request.action === 'BUFFER_EVENTS') {
-    if (request.events && request.events.length > 0) {
-      // Adiciona os novos eventos à lista persistida no storage.
-      // Usar storage evita perda de dados se o Service Worker for suspenso.
-      chrome.storage.local.get(['events'], (result) => {
-        const currentEvents = result.events || [];
-        const updatedEvents = currentEvents.concat(request.events);
-        
-        chrome.storage.local.set({ events: updatedEvents }, () => {
-           console.log(`[Background] Recebidos +${request.events.length} eventos. Total acumulado: ${updatedEvents.length}`);
-           sendResponse({ success: true });
-        });
-      });
-      return true; // Mantém o canal de mensagem aberto para a resposta assíncrona do storage
+  } else if (request.action === 'SESSION_META') {
+    if (request.sessionMeta) {
+      sessionDraft.session_meta = {
+        ...sessionDraft.session_meta,
+        ...request.sessionMeta,
+      };
+      chrome.storage.local.set({ sessionDraft });
+      sendResponse({ success: true });
     }
-  }
-
-  // Sinalização de fim de fluxo: O Content Script enviou todos os dados pendentes
-  else if (request.action === 'FLUSH_DONE') {
+  } else if (request.action === 'SESSION_FRAGMENT') {
+    if (request.fragment) {
+      mergeSessionFragment(sessionDraft, request.fragment);
+      chrome.storage.local.set({ sessionDraft });
+      sendResponse({ success: true });
+    }
+  } else if (request.action === 'BUFFER_EVENTS') {
+    if (request.events && request.events.length > 0) {
+      mergeSessionFragment(sessionDraft, {
+        rrweb: {
+          events: request.events,
+        },
+      });
+      chrome.storage.local.set({ sessionDraft });
+      sendResponse({ success: true });
+      return true;
+    }
+  } else if (request.action === 'FLUSH_DONE') {
     triggerDownload(sender.tab.id);
-  }
-
-  // Solicitação de estado pelo Popup para atualizar a UI
-  else if (request.action === 'getStatus') {
+  } else if (request.action === 'getStatus') {
     sendResponse(recordingState);
-  }
-  
-  // Comando do Popup para iniciar a gravação
-  else if (request.action === 'startRecording') {
+  } else if (request.action === 'startRecording') {
     startManager();
-  }
-  
-  // Comando do Popup para parar a gravação
-  else if (request.action === 'stopRecording') {
+  } else if (request.action === 'stopRecording') {
     stopManager();
   }
-  
-  // Retorna true por padrão para permitir respostas assíncronas futuras, se necessário
+
   return true;
 });
 
-/**
- * Inicia o processo de gravação.
- * Define o estado, limpa dados antigos e notifica o Content Script.
- */
 function startManager() {
   const startTime = Date.now();
+  const sessionId = crypto.randomUUID ? crypto.randomUUID() : `session-${startTime}`;
+
   recordingState = {
     isRecording: true,
-    startTime: startTime
+    startTime,
   };
 
-  // Persiste o novo estado e reseta a lista de eventos
-  chrome.storage.local.set({
-    recordingState: recordingState,
-    events: []
+  sessionDraft = createEmptySessionDraft({
+    session_meta: {
+      session_id: sessionId,
+      started_at: startTime,
+      ended_at: null,
+      page_url: null,
+      page_title: null,
+      user_agent: navigator.userAgent,
+    },
+    privacy: createPrivacyState(),
+    capture_config: createCaptureConfig(),
   });
 
-  // Inicia o contador visual no ícone
+  chrome.storage.local.set({
+    recordingState,
+    sessionDraft,
+  });
+
   startBadgeTimer();
 
-  // Envia comando para a aba ativa iniciar o rrweb
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.id) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'START_RRWEB' });
@@ -109,23 +101,21 @@ function startManager() {
   });
 }
 
-/**
- * Encerra o processo de gravação.
- * Atualiza estado e solicita ao Content Script que envie os dados restantes.
- */
 function stopManager() {
   stopBadgeTimer();
-  
+
   recordingState = {
     isRecording: false,
-    startTime: null
+    startTime: null,
   };
 
-  // Atualiza estado no storage para persistência
-  chrome.storage.local.set({ recordingState: recordingState });
+  sessionDraft.session_meta.ended_at = Date.now();
 
-  // Não baixamos imediatamente. Pedimos para a aba "Esvaziar o Buffer" (Flush) primeiro.
-  // Isso garante que os últimos milissegundos de interação sejam capturados.
+  chrome.storage.local.set({
+    recordingState,
+    sessionDraft,
+  });
+
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.id) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'STOP_AND_FLUSH' });
@@ -133,31 +123,20 @@ function stopManager() {
   });
 }
 
-/**
- * Finaliza a sessão recuperando todos os dados e enviando de volta para a aba.
- * @param {number} tabId - ID da aba que receberá os dados para download
- */
 function triggerDownload(tabId) {
-  // Recupera a lista completa de eventos do storage
-  chrome.storage.local.get(['events'], (result) => {
-    const masterEvents = result.events || [];
-    console.log(`[Background] Finalizando sessão. Preparando download de ${masterEvents.length} eventos.`);
-    
-    // Envia os dados completos para o Content Script gerar o arquivo JSON
+  chrome.storage.local.get(['sessionDraft'], (result) => {
+    const payload = result.sessionDraft || sessionDraft;
+
     chrome.tabs.sendMessage(tabId, {
       action: 'DOWNLOAD_FULL_SESSION',
-      events: masterEvents
+      session: payload,
     });
   });
 }
 
-/**
- * Gerenciamento do Timer do Badge
- */
-
 function startBadgeTimer() {
   if (timerInterval) clearInterval(timerInterval);
-  chrome.action.setBadgeBackgroundColor({ color: '#FF0000' }); // Fundo vermelho para indicar "REC"
+  chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
   updateBadge();
   timerInterval = setInterval(updateBadge, 1000);
 }
@@ -165,12 +144,9 @@ function startBadgeTimer() {
 function stopBadgeTimer() {
   if (timerInterval) clearInterval(timerInterval);
   timerInterval = null;
-  chrome.action.setBadgeText({ text: '' }); // Limpa o texto do badge
+  chrome.action.setBadgeText({ text: '' });
 }
 
-/**
- * Atualiza o texto do badge com o tempo decorrido (MM:SS)
- */
 function updateBadge() {
   if (!recordingState.startTime) return;
   const seconds = Math.floor((Date.now() - recordingState.startTime) / 1000);
