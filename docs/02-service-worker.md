@@ -2,30 +2,29 @@
 
 ## 1. Visão Geral e Propósito
 
-O arquivo [`background.js`](../src/scripts/background.js) implementa o Service Worker da extensão, funcionando como o orquestrador central do sistema. No contexto do Manifest V3, o Service Worker substitui as tradicionais Background Pages, operando em um modelo orientado a eventos com ciclo de vida gerenciado pelo navegador.
+O arquivo [`background.js`](../src/scripts/background.js) implementa o service worker da extensão e atua como orquestrador da sessão. Ele inicia e encerra gravações, persiste o estado corrente, coordena mensagens entre popup e content script e atualiza o badge de tempo no ícone da extensão.
 
 ### 1.1 Papel no Sistema
 
-O Service Worker desempenha as seguintes responsabilidades:
+O service worker é responsável por:
 
-1. **Gerenciamento de Estado Global**: Mantém o estado de gravação da sessão
-2. **Persistência de Dados**: Armazena eventos capturados no `chrome.storage.local`
-3. **Coordenação de Mensagens**: Atua como intermediário entre Popup e Content Script
-4. **Interface Visual**: Atualiza o badge do ícone da extensão com o tempo de gravação
+1. Gerenciar `recordingState`
+2. Criar e persistir `sessionDraft`
+3. Encaminhar mensagens para o content script
+4. Controlar o badge de gravação
+5. Disparar o fluxo de exportação ao final da sessão
 
 ### 1.2 Integração com o Sistema
-
-**Diagrama de integração do Service Worker como orquestrador central entre a UI, o armazenamento local e os scripts de conteúdo.**
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#bfbfbf', 'edgeColor': '#5d5d5d' }, "flowchart": {"subGraphTitleMargin": {"bottom": 30}}}}%%
 flowchart TB
-    Popup["Popup (UI React)"]
-    SW["Service Worker (background.js)"]
-    Storage["chrome.storage (local)"]
-    CS["Content Script (content.js)"]
-    
-    Popup <-->|"Mensagens"| SW
+    Popup["Popup (React)"]
+    SW["Service Worker"]
+    Storage["chrome.storage.local"]
+    CS["Content Script"]
+
+    Popup <-->|Mensagens| SW
     SW --> Storage
     SW --> CS
 ```
@@ -34,63 +33,53 @@ flowchart TB
 
 ### 2.1 Estrutura de Estado
 
-O Service Worker mantém dois estados principais:
+O service worker mantém dois blocos principais de estado:
 
 ```javascript
-// Estado da gravação (persistido)
 let recordingState = {
   isRecording: false,
-  startTime: null
+  startTime: null,
 };
 
-// Referência para intervalo do timer (não persistido)
-let timerInterval = null;
+let sessionDraft = createEmptySessionDraft();
 ```
 
-**Modelo de Estado**:
+O primeiro controla se há gravação ativa e quando ela começou. O segundo concentra os fragmentos da sessão já capturados.
 
-$$
-\text{Estado} = \begin{cases}
-\text{isRecording} \in \{\text{true}, \text{false}\} \\
-\text{startTime} \in \mathbb{Z}^+ \cup \{\text{null}\}
-\end{cases}
-$$
+Na prática, `sessionDraft` é o objeto que depois vira o JSON exportado. Ele vai recebendo, por merge, blocos como `rrweb.events`, `page_semantics`, `interaction_summary`, `ui_dynamics`, `heuristic_evidence` e `ux_markers`.
 
 ### 2.2 Fluxo de Inicialização
 
-**Fluxograma da lógica de inicialização e recuperação de estado do Service Worker.**
+Na inicialização, o worker recupera `recordingState` e `sessionDraft` de `chrome.storage.local`. Se a extensão reiniciar durante uma sessão ativa, o badge é reativado a partir do estado persistido.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#bfbfbf', 'edgeColor': '#5d5d5d' }, "flowchart": {"subGraphTitleMargin": {"bottom": 30}}}}%%
 flowchart TD
-    A["INICIALIZAÇÃO"]
-    B["chrome.storage.local.get(['recordingState'])"]
-    C["Estado encontrado\nisRecording = true?"]
-    D["Estado não encontrado\nMantém estado padrão"]
-    E["Sim\nRetomar Timer"]
-    F["Não\nAguardar comando"]
-    
-    A --> B
-    B --> C
-    B --> D
-    C --> E
-    C --> F
+    A["Service worker carregado"]
+    B["Lê recordingState e sessionDraft do storage"]
+    C{"isRecording = true?"}
+    D["Restaura badge e timer"]
+    E["Aguarda comando"]
+
+    A --> B --> C
+    C -- Sim --> D
+    C -- Não --> E
 ```
 
 ### 2.3 Sistema de Mensagens
 
-O Service Worker implementa um listener centralizado que processa diferentes tipos de ações:
-
 | Ação | Origem | Descrição |
 |------|--------|-----------|
-| `CHECK_STATUS` | Content Script | Verifica se há gravação ativa |
-| `BUFFER_EVENTS` | Content Script | Recebe lote de eventos capturados |
-| `FLUSH_DONE` | Content Script | Sinaliza fim do envio de dados |
-| `getStatus` | Popup | Solicita estado atual |
-| `startRecording` | Popup | Inicia nova sessão |
-| `stopRecording` | Popup | Encerra sessão atual |
+| `CHECK_STATUS` | Content Script | Verifica se há gravação em andamento |
+| `SESSION_META` | Content Script | Atualiza metadados da sessão |
+| `SESSION_FRAGMENT` | Content Script | Mescla fragmentos analíticos da sessão |
+| `BUFFER_EVENTS` | Content Script | Recebe lotes de eventos rrweb |
+| `FLUSH_DONE` | Content Script | Indica que o flush final terminou |
+| `getStatus` | Popup | Solicita o estado visual da gravação |
+| `startRecording` | Popup | Inicia uma nova sessão |
+| `stopRecording` | Popup | Encerra a sessão atual |
 
-### 2.4 Fluxo de Dados Durante Gravação
+### 2.4 Fluxo de Dados Durante a Gravação
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#bfbfbf', 'edgeColor': '#5d5d5d' }, "flowchart": {"subGraphTitleMargin": {"bottom": 30}}}}%%
@@ -99,73 +88,35 @@ sequenceDiagram
     participant SW as Service Worker
     participant ST as Storage
 
-    Note over CS, SW: Evento disparado
-    CS->>SW: BUFFER_EVENTS (50 eventos)
-    
-    activate SW
-    SW->>ST: storage.local.get()
-    ST-->>SW: currentEvents
-    
-    Note right of SW: Processa e mescla dados
-    
-    SW->>ST: storage.local.set(updatedEvents)
-    ST-->>SW: confirmação (opcional)
-    
+    CS->>SW: BUFFER_EVENTS (lote)
+    SW->>ST: mergeSessionFragment()
+    ST-->>SW: ok
     SW-->>CS: { success: true }
-    deactivate SW
 ```
 
 ## 3. Fundamentação Matemática
 
 ### 3.1 Cálculo do Tempo Decorrido
 
-O tempo decorrido é calculado pela diferença entre o timestamp atual e o timestamp de início:
-
 $$
 \Delta t = t_{\text{atual}} - t_{\text{início}}
 $$
 
-A conversão para formato MM:SS segue:
-
-$$
-\text{minutos} = \left\lfloor \frac{\Delta t}{60} \right\rfloor
-$$
-
-$$
-\text{segundos} = \Delta t \mod 60
-$$
-
-**Implementação**:
-
-```javascript
-const seconds = Math.floor((Date.now() - recordingState.startTime) / 1000);
-const m = Math.floor(seconds / 60).toString();
-const s = (seconds % 60).toString().padStart(2, '0');
-```
+O badge exibe o tempo em formato `M:SS`, com atualização por segundo.
 
 ### 3.2 Acumulação de Eventos
-
-O processo de acumulação de eventos pode ser modelado como:
 
 $$
 E_{\text{total}} = \bigcup_{i=1}^{n} E_i
 $$
 
-Onde $E_i$ representa cada lote de eventos recebido do Content Script.
+Onde cada `E_i` representa um lote recebido do content script.
 
 ### 3.3 Latência de Comunicação
-
-O tempo total de persistência de um evento é:
 
 $$
 T_{\text{persistência}} = T_{\text{captura}} + T_{\text{buffer}} + T_{\text{mensagem}} + T_{\text{storage}}
 $$
-
-Onde:
-- $T_{\text{captura}}$: Tempo de captura pelo rrweb
-- $T_{\text{buffer}}$: Tempo de espera no buffer (até 50 eventos)
-- $T_{\text{mensagem}}$: Latência da API de mensagens
-- $T_{\text{storage}}$: Latência de escrita no storage
 
 ## 4. Parâmetros Técnicos
 
@@ -173,24 +124,24 @@ Onde:
 
 | Parâmetro | Valor | Descrição |
 |-----------|-------|-----------|
-| Cor de fundo | `#FF0000` | Vermelho para indicar "REC" |
-| Intervalo de atualização | 1000ms | Atualização por segundo |
-| Formato | `M:SS` | Minutos e segundos |
+| Cor de fundo | `#FF0000` | Sinal visual de gravação ativa |
+| Intervalo | 1000ms | Atualização por segundo |
+| Formato | `M:SS` | Tempo decorrido |
 
 ### 4.2 Configurações de Storage
 
 | Chave | Tipo | Propósito |
 |-------|------|-----------|
 | `recordingState` | Object | Estado persistido da gravação |
-| `events` | Array | Lista acumulada de eventos rrweb |
+| `sessionDraft` | Object | Sessão em construção com blocos de replay, semântica e heurísticas |
 
 ### 4.3 Limitações do Service Worker
 
 | Aspecto | Limitação | Solução Adotada |
 |---------|-----------|-----------------|
-| Ciclo de vida | Pode ser suspenso a qualquer momento | Persistir estado em `chrome.storage` |
-| Intervalos | Perdidos ao suspender | Reinicializar timer ao retomar |
-| Memória | Volátil | Usar storage para dados críticos |
+| Ciclo de vida | Pode ser suspenso | Persistir estado em storage |
+| Intervalos | São descartados ao suspender | Recriar o timer ao retomar |
+| Memória | Volátil | Guardar dados críticos em `chrome.storage.local` |
 
 ## 5. Mapeamento Tecnológico e Referências
 
@@ -198,7 +149,6 @@ Onde:
 
 **Documentação Oficial**: https://developer.chrome.com/docs/extensions/reference/api/storage
 
-**Citação (BibTeX)**:
 ```bibtex
 @online{chrome_storage_api,
   author = {{Chrome Developers}},
@@ -212,7 +162,6 @@ Onde:
 
 **Documentação Oficial**: https://developer.chrome.com/docs/extensions/reference/api/runtime
 
-**Padrão de Mensagens**:
 ```bibtex
 @online{chrome_messaging,
   author = {{Chrome Developers}},
@@ -222,7 +171,7 @@ Onde:
 }
 ```
 
-### 5.3 Chrome Action API (Badge)
+### 5.3 Chrome Action API
 
 **Documentação Oficial**: https://developer.chrome.com/docs/extensions/reference/api/action
 
@@ -232,7 +181,6 @@ Onde:
 
 ### 5.5 Service Worker Architecture
 
-**Especificação W3C**:
 ```bibtex
 @techreport{w3c_service_workers,
   author = {Nikhil Marathe and Alex Russell and Jungkee Song},
@@ -247,119 +195,37 @@ Onde:
 
 ### 6.1 Função `startManager()`
 
-**Propósito**: Inicializa uma nova sessão de gravação.
-
-**Sequência de Operações**:
-
-1. Captura timestamp atual: `Date.now()`
-2. Define estado de gravação ativo
-3. Persiste estado e limpa eventos anteriores
-4. Inicia contador visual no badge
-5. Notifica Content Script para iniciar captura
-
-**Diagrama de Sequência**:
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#bfbfbf', 'edgeColor': '#5d5d5d' }, "flowchart": {"subGraphTitleMargin": {"bottom": 30}}}}%%
-sequenceDiagram
-    participant P as Popup
-    participant SW as Service Worker
-    participant S as Storage
-    participant CS as Content Script
-
-    P->>SW: startRecording
-    
-    activate SW
-    SW->>S: set({ recordingState, events: [] })
-    S-->>SW: OK
-    
-    Note right of SW: Notifica abas ativas
-    
-    SW->>CS: START_RRWEB
-    deactivate SW
-    
-    Note over CS: rrweb.record() iniciado
-```
+`startManager()` cria uma nova sessão, define `isRecording = true`, inicializa `sessionDraft`, persiste o estado e envia `START_RRWEB` para a aba ativa.
 
 ### 6.2 Função `stopManager()`
 
-**Propósito**: Encerra a sessão de gravação e dispara o processo de download.
-
-**Padrão de Flush**:
-
-O sistema não baixa imediatamente ao receber o comando de parada. Em vez disso, solicita ao Content Script que "esvazie o buffer" (flush) primeiro:
-
-$$
-\text{Stop} \rightarrow \text{Flush} \rightarrow \text{Download}
-$$
-
-Isso garante que os últimos milissegundos de interação sejam capturados.
+`stopManager()` encerra o badge, marca `ended_at` na sessão, grava o estado final e envia `STOP_AND_FLUSH` ao content script.
 
 ### 6.3 Função `triggerDownload()`
 
-**Propósito**: Consolida todos os eventos e envia para o Content Script gerar o arquivo.
-
-**Fluxo**:
-
-```
-1. Recupera lista completa de eventos do storage
-2. Envia mensagem 'DOWNLOAD_FULL_SESSION' ao Content Script
-3. Content Script gera Blob JSON e dispara download
-```
+Após o `FLUSH_DONE`, o service worker lê `sessionDraft` do storage e encaminha `DOWNLOAD_FULL_SESSION` ao content script para gerar o arquivo JSON.
 
 ### 6.4 Sistema de Badge Timer
 
-O badge timer utiliza `setInterval` para atualização periódica:
-
-```javascript
-timerInterval = setInterval(updateBadge, 1000);
-```
-
-**Tratamento de Ressuspensão**:
-
-Quando o Service Worker é retomado após suspensão, o timer é reinicializado:
-
-```javascript
-if (recordingState.isRecording) {
-  startBadgeTimer();
-}
-```
+O badge é atualizado com `setInterval(updateBadge, 1000)`. Se o worker for restaurado durante uma gravação ativa, o timer é recriado a partir do `recordingState`.
 
 ## 7. Justificativa de Escolhas
 
-### 7.1 Uso de `chrome.storage.local` vs `chrome.storage.sync`
+### 7.1 `chrome.storage.local` vs `chrome.storage.sync`
 
 | Aspecto | `local` | `sync` |
 |---------|---------|--------|
-| Limite de armazenamento | 10 MB | 100 KB |
+| Capacidade | Maior | Menor |
 | Sincronização | Não | Sim |
 | Latência | Menor | Maior |
 
-**Decisão**: `chrome.storage.local` foi escolhido pela maior capacidade de armazenamento, essencial para acumular eventos de sessões longas.
-
 ### 7.2 Padrão de Mensagens Assíncronas
 
-O uso de `return true` no listener de mensagens permite respostas assíncronas:
-
-```javascript
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // ...
-  return true; // Mantém canal aberto para resposta assíncrona
-});
-```
-
-Isso é necessário porque operações de storage são assíncronas.
+O listener retorna `true` quando precisa manter o canal aberto para respostas assíncronas, porque a persistência da sessão depende de operações de storage.
 
 ### 7.3 Tamanho do Buffer no Content Script
 
-O Content Script envia eventos em lotes de 50. Essa escolha equilibra:
-
-- **Menor latência**: Lotes menores = envio mais frequente
-- **Menor overhead**: Lotes maiores = menos mensagens
-
-$$
-\text{Trade-off} = \frac{\text{Latência}}{\text{Overhead de Mensagens}}
-$$
+O limite de 50 eventos equilibra latência de envio e sobrecarga de mensagens entre content script e service worker.
 
 ## 8. Considerações para Monografia
 
@@ -369,20 +235,18 @@ $$
 \section{Implementação do Service Worker}
 \subsection{Arquitetura Orientada a Eventos}
 \subsection{Gerenciamento de Estado Persistente}
-\subsection{Sistema de Comunicação entre Componentes}
+\subsection{Comunicação entre Componentes}
 \subsection{Interface Visual via Badge}
 ```
 
 ### 8.2 Algoritmos para Documentação
 
-- Algoritmo de inicialização com recuperação de estado
-- Algoritmo de acumulação de eventos
-- Algoritmo de finalização com flush
+- Inicialização com recuperação de estado
+- Acumulação de eventos por lote
+- Finalização com flush e exportação
 
 ### 8.3 Métricas de Performance
 
-Sugere-se documentar:
-
-- Tempo médio de persistência de evento
-- Capacidade máxima de armazenamento
-- Comportamento sob suspensão do Service Worker
+- Tempo médio de persistência
+- Capacidade de sessão por armazenamento local
+- Comportamento sob suspensão do service worker

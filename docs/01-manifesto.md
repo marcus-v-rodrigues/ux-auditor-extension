@@ -2,15 +2,15 @@
 
 ## 1. Visão Geral e Propósito
 
-O arquivo [`manifest.json`](../manifest.json) constitui o documento de configuração central da extensão Chrome, funcionando como seu "cartão de identidade" e especificando todos os metadados, permissões e componentes que compõem o sistema. Este arquivo é obrigatório para qualquer extensão do Chrome e segue as especificações do Manifest V3, a versão mais recente da plataforma de extensões do Google Chrome.
+O arquivo [`manifest.json`](../manifest.json) constitui o documento de configuração central da extensão Chrome, funcionando como seu "cartão de identidade" e especificando todos os metadados, permissões e componentes que compõem o sistema. Este arquivo é obrigatório para qualquer extensão do Chrome e segue as especificações do Manifest V3, a versão mais recente da plataforma de extensões do Google Chrome. No projeto atual, ele registra o popup, o service worker em modo módulo e o content script injetado em todas as páginas compatíveis.
 
 ### 1.1 Integração com o Sistema
 
-O manifesto atua como o ponto de entrada para o navegador, definindo:
+O manifesto atua como o ponto de entrada da extensão e informa:
 
-- Quais scripts serão executados e em que contexto
-- Quais permissões a extensão requer
-- Como a interface do usuário será apresentada
+- Quais scripts serão carregados e em qual contexto
+- Quais permissões são necessárias
+- Qual interface é exibida ao usuário
 
 ## 2. Arquitetura e Lógica
 
@@ -30,20 +30,16 @@ O manifesto atua como o ponto de entrada para o navegador, definindo:
 
 ### 2.2 Fluxo de Carregamento
 
-O ciclo de carregamento da extensão segue a seguinte sequência:
-
-**Fluxograma do ciclo de carregamento da extensão a partir da leitura do manifesto pelo navegador.**
-
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#bfbfbf', 'edgeColor': '#5d5d5d' }, "flowchart": {"subGraphTitleMargin": {"bottom": 30}}}}%%
 flowchart TD
-    A["1. Chrome lê manifest.json"]
-    B["2. Valida estrutura e permissões"]
-    C["3. Registra Service Worker (background.js)"]
-    D["4. Pré-registra Content Scripts para injeção"]
-    E["5. Prepara ação do popup (index.html)"]
-    F["6. Extensão pronta para uso"]
-    
+    A["Chrome lê manifest.json"]
+    B["Valida estrutura e permissões"]
+    C["Registra o service worker"]
+    D["Pré-registra o content script"]
+    E["Prepara a action do popup"]
+    F["Extensão pronta para uso"]
+
     A --> B --> C --> D --> E --> F
 ```
 
@@ -53,9 +49,9 @@ flowchart TD
 
 | Campo | Valor | Descrição |
 |-------|-------|-----------|
-| `manifest_version` | 3 | Versão do manifesto (V3 é a atual) |
-| `name` | "UX Auditor Extension" | Nome exibido ao usuário |
-| `version` | "2.0" | Versão da extensão (formato semântico) |
+| `manifest_version` | 3 | Versão atual do Manifest V3 |
+| `name` | `UX Auditor Extension` | Nome exibido pelo Chrome |
+| `version` | `2.0` | Versão funcional da extensão |
 
 ### 3.2 Configuração da Ação (Popup)
 
@@ -66,10 +62,7 @@ flowchart TD
 }
 ```
 
-O campo `action` define o comportamento do ícone da extensão na barra de ferramentas:
-
-- **`default_popup`**: Página HTML que será exibida ao clicar no ícone
-- **`default_title`**: Tooltip exibido ao passar o mouse sobre o ícone
+O campo `action` define o comportamento do ícone da extensão na barra de ferramentas.
 
 ### 3.3 Service Worker (Background Script)
 
@@ -80,16 +73,7 @@ O campo `action` define o comportamento do ícone da extensão na barra de ferra
 }
 ```
 
-A configuração do Service Worker no Manifest V3 difere fundamentalmente do modelo de Background Pages do V2:
-
-| Aspecto | Manifest V2 | Manifest V3 |
-|---------|-------------|-------------|
-| Modelo | Background Page (persistente) | Service Worker (event-based) |
-| Ciclo de vida | Contínuo | Suspenso quando inativo |
-| Escopo | Global | Isolado por evento |
-| Módulos ES | Não suportado nativamente | Suportado via `"type": "module"` |
-
-**Implicação Arquitetural**: A natureza event-based do Service Worker exige que o estado seja persistido externamente (via `chrome.storage`), pois a memória pode ser perdida entre eventos.
+O service worker é orientado a eventos e não permanece ativo de forma contínua. Por isso, o estado de gravação e a sessão em andamento são persistidos em `chrome.storage.local`.
 
 ### 3.4 Content Scripts
 
@@ -102,20 +86,7 @@ A configuração do Service Worker no Manifest V3 difere fundamentalmente do mod
 ]
 ```
 
-A configuração de Content Scripts define:
-
-- **`matches`**: Padrões de URL onde o script será injetado
-  - `"<all_urls>"`: Injeta em todas as páginas HTTP, HTTPS e file://
-- **`js`**: Lista de scripts a serem injetados
-
-**Padrão de Injeção**:
-
-$$
-\text{Injeção} = \begin{cases}
-\text{Automática} & \text{se URL } \in \text{ matches} \\
-\text{Manual} & \text{via chrome.scripting.executeScript}
-\end{cases}
-$$
+O content script é injetado automaticamente nas páginas compatíveis, sem depender de injeção manual por URL específica.
 
 ### 3.5 Permissões
 
@@ -130,20 +101,18 @@ $$
 
 | Permissão | Finalidade | Justificativa |
 |-----------|------------|---------------|
-| `activeTab` | Acesso temporário à aba ativa | Permite injetar scripts e acessar o DOM da aba atual sem permissões host amplas |
-| `scripting` | API chrome.scripting | Necessária para injeção programática de scripts |
-| `storage` | API chrome.storage | Persistência de estado e eventos gravados |
-| `downloads` | API chrome.downloads | Download do arquivo JSON com a sessão gravada |
+| `activeTab` | Acesso à aba ativa | Permite atuar na aba corrente sem host permissions amplas |
+| `scripting` | API `chrome.scripting` | Necessária para injeção programática de scripts |
+| `storage` | API `chrome.storage` | Persistência de estado e sessão |
+| `downloads` | API `chrome.downloads` | Geração do arquivo JSON final |
 
 #### Princípio de Menor Privilégio
 
-A escolha das permissões segue o princípio de menor privilégio (Principle of Least Privilege):
+O manifesto foi desenhado para pedir apenas as permissões estritamente necessárias ao caso de uso.
 
 $$
 \text{Privilégio}_{\text{real}} \subseteq \text{Privilégio}_{\text{necessário}}
 $$
-
-A permissão `activeTab` é particularmente importante pois fornece acesso à aba atual apenas quando o usuário interage com a extensão, evitando a necessidade da permissão `tabs` que seria mais permissiva.
 
 ## 4. Fundamentação Matemática
 
@@ -174,30 +143,31 @@ $$
 \text{<all\_urls>} = \bigcup_{s \in \{http, https, file\}} s://*
 $$
 
+A cobertura prática é ampla o suficiente para a captura da sessão em páginas HTTP, HTTPS e `file://`.
+
 ## 5. Parâmetros Técnicos
 
 ### 5.1 Configurações Opcionais Não Utilizadas
 
 | Campo | Status | Justificativa |
 |-------|--------|---------------|
-| `icons` | Não definido | A extensão utiliza ícone padrão do Chrome |
-| `default_icon` | Não definido | Mesma razão acima |
-| `host_permissions` | Não definido | `activeTab` é suficiente para o caso de uso |
-| `web_accessible_resources` | Não definido | Não há recursos que precisam ser acessíveis via URL |
+| `icons` | Não definido | O projeto não depende de ícone customizado |
+| `host_permissions` | Não definido | `activeTab` é suficiente para o fluxo atual |
+| `web_accessible_resources` | Não definido | Não há recursos públicos a expor |
 
 ### 5.2 Impacto das Escolhas de Configuração
 
 | Decisão | Impacto Positivo | Trade-off |
 |---------|------------------|-----------|
-| `type: "module"` | Suporte a ES Modules | Requer build tool para compatibilidade |
-| `<all_urls>` | Cobertura universal | Revisão mais rigorosa na Chrome Web Store |
-| Service Worker | Eficiência de recursos | Complexidade de persistência de estado |
+| `type: "module"` | ES Modules nativos no service worker | Exige pipeline de build compatível |
+| `<all_urls>` | Cobertura ampla | Exige cuidado com a privacidade e revisão |
+| `storage` local | Persistência sem backend | Sessões ficam limitadas ao dispositivo |
 
 ## 6. Mapeamento Tecnológico e Referências
 
 ### 6.1 Chrome Extensions Manifest V3
 
-**Documentação Oficial**: https://developer.chrome.com/docs/extensions/mv3/intro/
+**Documentação Oficial**: https://developer.chrome.com/docs/extensions/mv3/
 
 **Citação Recomendada (BibTeX)**:
 ```bibtex
@@ -214,7 +184,6 @@ $$
 
 **Documentação Oficial**: https://developer.chrome.com/docs/extensions/mv3/service_workers/
 
-**Artigo Seminal**:
 ```bibtex
 @inproceedings{service_workers_w3c,
   author = {Nikhil Marathe and Alex Russell},
@@ -233,7 +202,6 @@ $$
 
 **Documentação Oficial**: https://developer.chrome.com/docs/extensions/mv3/declare_permissions/
 
-**Princípio de Menor Privilégio**:
 ```bibtex
 @article{saltzer1975protection,
   author = {Saltzer, Jerome H. and Schroeder, Michael D.},
@@ -258,26 +226,20 @@ A escolha do Manifest V3 foi motivada por:
 3. **Performance**: O modelo event-based consome menos recursos do sistema
 4. **Futuro**: Garante compatibilidade com versões futuras do Chrome
 
-### 7.2 Permissão `activeTab` vs `tabs`
-
-A escolha de `activeTab` sobre `tabs` segue o princípio de menor privilégio. Enquanto `tabs` permitiria acesso a todas as abas o tempo todo, `activeTab` concede acesso apenas quando o usuário interage com a extensão, reduzindo a superfície de ataque.
 
 ## 8. Considerações para Monografia
 
 ### 8.1 Seções Sugeridas
 
-Para a monografia em LaTeX, sugere-se a seguinte estrutura:
-
 ```latex
 \section{Arquitetura da Extensão}
 \subsection{Configuração e Manifesto}
-\subsubsection{Estrutura do Manifest V3}
-\subsubsection{Modelo de Permissões}
-\subsubsection{Service Workers}
+\subsection{Permissões e Princípio de Menor Privilégio}
+\subsection{Service Worker e Persistência}
 ```
 
 ### 8.2 Figuras Recomendadas
 
-- Diagrama de componentes da extensão
-- Fluxograma do ciclo de carregamento
-- Tabela comparativa V2 vs V3
+- Diagrama do ciclo de carregamento
+- Tabela de permissões
+- Comparativo entre Background Page e Service Worker

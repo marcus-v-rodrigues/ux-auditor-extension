@@ -2,18 +2,18 @@
 
 ## Índice
 
-Esta pasta contém a documentação técnica completa do projeto UX Auditor Extension, desenvolvida para suportar a escrita de uma monografia em LaTeX.
+Esta pasta reúne a documentação técnica do projeto UX Auditor Extension, atualizada para refletir a implementação atual da extensão e sua cadeia de análise local.
 
 ### Documentos Disponíveis
 
 | Arquivo | Título | Descrição |
 |---------|--------|-----------|
-| [00-visao-geral-sistema.md](./00-visao-geral-sistema.md) | Visão Geral do Sistema | Introdução, arquitetura macroscópica, fluxo de dados e stack tecnológico |
-| [01-manifesto.md](./01-manifesto.md) | Manifesto da Extensão | Análise do manifest.json, permissões e configurações do Manifest V3 |
-| [02-service-worker.md](./02-service-worker.md) | Service Worker | Documentação do background.js, orquestração e persistência de estado |
-| [03-content-script.md](./03-content-script.md) | Content Script | Documentação do content.js e biblioteca rrweb para captura de sessões |
-| [04-interface-popup.md](./04-interface-popup.md) | Interface do Popup | Documentação do Popup.jsx, React hooks e sistema de design |
-| [05-sistema-build.md](./05-sistema-build.md) | Sistema de Build | Análise do package.json, vite.config.js e pipeline de build |
+| [00-visao-geral-sistema.md](./00-visao-geral-sistema.md) | Visão Geral do Sistema | Introdução, arquitetura macroscópica, fluxo de dados, privacidade e stack tecnológico |
+| [01-manifesto.md](./01-manifesto.md) | Manifesto da Extensão | Análise do `manifest.json`, permissões e configuração do Manifest V3 |
+| [02-service-worker.md](./02-service-worker.md) | Service Worker | Orquestração, persistência de estado, mensagens e finalização da sessão |
+| [03-content-script.md](./03-content-script.md) | Content Script | Captura com rrweb, heurísticas, acessibilidade, perfis de valor e exportação |
+| [04-interface-popup.md](./04-interface-popup.md) | Interface do Popup | Fluxo do `Popup.jsx`, estado da UI e comunicação com o background |
+| [05-sistema-build.md](./05-sistema-build.md) | Sistema de Build | Dependências, Vite, CRXJS e pipeline de desenvolvimento/build |
 | [06-referencias.md](./06-referencias.md) | Referências Bibliográficas | Referências formatadas para BibTeX e ABNT |
 
 ## Estrutura Recomendada para Monografia
@@ -41,7 +41,7 @@ Esta pasta contém a documentação técnica completa do projeto UX Auditor Exte
 
 ### 1. Conversão para LaTeX
 
-Os documentos Markdown podem ser convertidos para LaTeX utilizando ferramentas como:
+Os documentos Markdown podem ser convertidos para LaTeX com ferramentas como:
 
 ```bash
 pandoc 00-visao-geral-sistema.md -o visao-geral.tex
@@ -49,7 +49,7 @@ pandoc 00-visao-geral-sistema.md -o visao-geral.tex
 
 ### 2. Fórmulas Matemáticas
 
-As fórmulas já estão em sintaxe LaTeX ($ $ e $$ $$), prontas para uso direto.
+As fórmulas já estão em sintaxe LaTeX (`$ $` e `$$ $$`), prontas para uso direto.
 
 ### 3. Citações
 
@@ -66,30 +66,34 @@ Use as chaves de citação fornecidas:
 
 ### Principais
 
-- **Chrome Extensions Manifest V3**: Plataforma de extensões do Chrome
-- **rrweb**: Biblioteca de gravação e reprodução de sessões web
-- **React 19**: Biblioteca de interface de usuário
-- **Vite 7**: Build tool moderno
+- **Chrome Extensions Manifest V3**
+- **rrweb**
+- **React 19**
+- **Vite 7**
+- **CRXJS**
+- **axe-core**
 
 ### APIs Chrome
 
-- chrome.storage
-- chrome.runtime
-- chrome.tabs
-- chrome.action
-- chrome.scripting
+- `chrome.storage`
+- `chrome.runtime`
+- `chrome.tabs`
+- `chrome.action`
+- `chrome.scripting`
+- `chrome.downloads`
 
 ### Web APIs
 
 - Service Workers
 - MutationObserver
+- ResizeObserver
 - Blob
 - URL.createObjectURL
 
 ## Contato e Manutenção
 
-Esta documentação foi gerada como parte do projeto de mestrado. Para atualizações ou correções, consulte o repositório principal do projeto.
+Esta documentação acompanha o projeto de mestrado e deve ser mantida sincronizada com o código-fonte sempre que o fluxo de captura, exportação ou heurísticas mudar.
 
 ---
 
-*Documentação gerada em: Fevereiro de 2024*
+*Documentação atualizada em: Abril de 2026*

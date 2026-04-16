@@ -83,6 +83,18 @@ As referências abaixo estão formatadas para inclusão direta em um arquivo `.b
 }
 
 % ============================================================
+% ACCESSIBILITY
+% ============================================================
+
+@online{axe_core,
+  author = {{Deque Systems}},
+  title = {axe-core},
+  year = {2024},
+  url = {https://github.com/dequelabs/axe-core},
+  note = {Análise automatizada de acessibilidade}
+}
+
+% ============================================================
 % REACT
 % ============================================================
 
@@ -328,6 +340,7 @@ New York: Basic Books, 2013.
 | Chrome Extensions | https://developer.chrome.com/docs/extensions/ |
 | React | https://react.dev/ |
 | rrweb | https://www.rrweb.io/ |
+| axe-core | https://github.com/dequelabs/axe-core |
 | Vite | https://vite.dev/ |
 | CRXJS | https://crxjs.dev/vite-plugin/ |
 | ESLint | https://eslint.org/ |
@@ -388,6 +401,12 @@ New York: Basic Books, 2013.
 \cite{vite2024} % Vite
 \cite{crxjs2024} % CRXJS
 \cite{esbuild2020} % ESBuild
+```
+
+### 4.6 Acessibilidade
+
+```latex
+\cite{axe_core} % axe-core
 ```
 
 ## 5. Notas para Compilação LaTeX
