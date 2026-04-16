@@ -8,6 +8,7 @@ import { UiDynamicsTracker } from './ui-dynamics-tracker.js';
 import { runAxePreliminaryAnalysis } from './axe-runner.js';
 import { createEmptySessionDraft, mergeSessionFragment } from './session-schema.js';
 import { buildExportPayload } from './payload-builder.js';
+import { HEURISTIC_THRESHOLDS } from './heuristics/thresholds.js';
 
 let stopFn = null;
 let eventBuffer = [];
@@ -335,7 +336,7 @@ function deriveHeuristicEvidence(semantics) {
   }
 
   const smallTargets = semantics.interactive_elements.filter(
-    (element) => element.boundingBox.width > 0 && element.boundingBox.height > 0 && (element.boundingBox.width < 44 || element.boundingBox.height < 44),
+    (element) => element.boundingBox.width > 0 && element.boundingBox.height > 0 && (element.boundingBox.width < HEURISTIC_THRESHOLDS.heuristic_evidence.accessibility.minimum_interactive_target_size_px || element.boundingBox.height < HEURISTIC_THRESHOLDS.heuristic_evidence.accessibility.minimum_interactive_target_size_px),
   );
 
   if (smallTargets.length) {
@@ -499,7 +500,7 @@ function deriveBehavioralEvidence(interactionFragment, uiFragment) {
     });
   }
 
-  const burstWindows = mutationWindows.filter((window) => window.added_nodes + window.removed_nodes >= 20);
+  const burstWindows = mutationWindows.filter((window) => window.added_nodes + window.removed_nodes >= HEURISTIC_THRESHOLDS.heuristic_evidence.usability.structural_burst_node_count);
   if (burstWindows.length) {
     usability.push({
       timestamp: Date.now(),

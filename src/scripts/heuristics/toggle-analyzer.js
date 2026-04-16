@@ -1,18 +1,9 @@
-import { describeTargetElement } from './semantic-resolver.js';
+import { describeTargetElement } from '../semantic-resolver.js';
+import { HEURISTIC_THRESHOLDS } from './thresholds.js';
+import { createHeuristicCandidate } from './candidate-builder.js';
 
 function now() {
   return Date.now();
-}
-
-function createHeuristicCandidate(type, target, startedAt, endedAt, metrics) {
-  return {
-    kind: 'heuristic_candidate',
-    type,
-    timestamp_start: startedAt,
-    timestamp_end: endedAt,
-    target,
-    metrics,
-  };
 }
 
 export class ToggleAnalyzer {
@@ -62,7 +53,7 @@ export class ToggleAnalyzer {
     const candidates = [];
     for (const session of this.sessions.values()) {
       const toggleCount = Math.max(session.sequence.length - 1, 0);
-      if (toggleCount >= 2 && !session.emitted) {
+      if (toggleCount >= HEURISTIC_THRESHOLDS.interaction_patterns.toggle_interaction.repeated_toggle.min_toggle_count && !session.emitted) {
         candidates.push(createHeuristicCandidate('repeated_toggle_candidate', session.target, session.startedAt, session.endedAt, {
           toggle_count: toggleCount,
           state_sequence: session.sequence,

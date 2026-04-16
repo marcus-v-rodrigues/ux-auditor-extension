@@ -1,9 +1,10 @@
 import { getCssSelector, isInteractiveElement } from './semantic-resolver.js';
 import { shouldMaskSensitiveField } from './sensitive-masking.js';
-import { PointerAnalyzer } from './pointer-analyzer.js';
-import { InputAnalyzer } from './input-analyzer.js';
-import { ToggleAnalyzer } from './toggle-analyzer.js';
-import { HeuristicAggregator } from './heuristic-aggregator.js';
+import { HEURISTIC_THRESHOLDS } from './heuristics/thresholds.js';
+import { PointerAnalyzer } from './heuristics/pointer-analyzer.js';
+import { InputAnalyzer } from './heuristics/input-analyzer.js';
+import { ToggleAnalyzer } from './heuristics/toggle-analyzer.js';
+import { HeuristicAggregator } from './heuristics/heuristic-aggregator.js';
 
 function now() {
   return Date.now();
@@ -147,7 +148,7 @@ export class InteractionSummarizer {
     const meta = deriveTargetMeta(target);
     const currentTime = now();
 
-    if (!this.activePointerSegment || currentTime - this.activePointerSegment.lastAt > 1200 || this.activePointerSegment.target.css_selector !== meta.css_selector) {
+    if (!this.activePointerSegment || currentTime - this.activePointerSegment.lastAt > HEURISTIC_THRESHOLDS.session_windows.pointer_segment_gap_ms || this.activePointerSegment.target.css_selector !== meta.css_selector) {
       this.closePointerSegment(currentTime);
       this.activePointerSegment = {
         startedAt: currentTime,
@@ -168,8 +169,8 @@ export class InteractionSummarizer {
     const point = createPoint(event);
     const lastPoint = this.activePointerSegment.points[this.activePointerSegment.points.length - 1];
     const gap = point.t - lastPoint.t;
-    if (gap >= 500) this.activePointerSegment.longPauses += 1;
-    if (gap >= 100 || distance(lastPoint, point) >= 12) {
+    if (gap >= HEURISTIC_THRESHOLDS.session_windows.pointer_long_pause_ms) this.activePointerSegment.longPauses += 1;
+    if (gap >= HEURISTIC_THRESHOLDS.session_windows.pointer_movement_gap_ms || distance(lastPoint, point) >= HEURISTIC_THRESHOLDS.session_windows.pointer_movement_distance_px) {
       this.activePointerSegment.points.push(point);
     }
     this.activePointerSegment.lastAt = currentTime;
@@ -214,7 +215,7 @@ export class InteractionSummarizer {
     const currentTime = now();
     const recentClicks = this.activePointerSegment?.clickCount ?? 0;
 
-    if (recentClicks >= 3 && currentTime - this.activePointerSegment.startedAt <= 1200) {
+    if (recentClicks >= HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion.rage_click_min_clicks && currentTime - this.activePointerSegment.startedAt <= HEURISTIC_THRESHOLDS.session_windows.rage_click_window_ms) {
       this.activePointerSegment.rageClickCandidate = true;
       this.emitMarker('rage_click_candidate', meta, 'Sequência curta de cliques repetidos', {
         clickCount: recentClicks,
@@ -357,7 +358,7 @@ export class InteractionSummarizer {
     const scrollY = window.scrollY;
     const scrollX = window.scrollX;
 
-    if (!this.activeScrollRegion || currentTime - this.activeScrollRegion.lastAt > 1500) {
+    if (!this.activeScrollRegion || currentTime - this.activeScrollRegion.lastAt > HEURISTIC_THRESHOLDS.session_windows.hover_region_gap_ms) {
       this.closeScrollRegion(currentTime);
       this.activeScrollRegion = {
         startedAt: currentTime,

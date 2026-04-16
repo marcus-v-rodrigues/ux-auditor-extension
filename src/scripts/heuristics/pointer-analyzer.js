@@ -1,4 +1,6 @@
-import { describeTargetElement } from './semantic-resolver.js';
+import { describeTargetElement } from '../semantic-resolver.js';
+import { HEURISTIC_THRESHOLDS } from './thresholds.js';
+import { createHeuristicCandidate } from './candidate-builder.js';
 
 function now() {
   return Date.now();
@@ -39,17 +41,6 @@ function normalizeAngleDelta(delta) {
   return value;
 }
 
-function createHeuristicCandidate(type, target, startedAt, endedAt, metrics) {
-  return {
-    kind: 'heuristic_candidate',
-    type,
-    timestamp_start: startedAt,
-    timestamp_end: endedAt,
-    target,
-    metrics,
-  };
-}
-
 export class PointerAnalyzer {
   constructor() {
     this.motionSegment = null;
@@ -75,7 +66,7 @@ export class PointerAnalyzer {
     }
 
     const gap = point.t - this.motionSegment.lastAt;
-    if (gap > 700) {
+    if (gap > HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion.segment_gap_ms) {
       this.finalizeMotionSegment(this.motionSegment.lastAt);
       this.motionSegment = {
         startedAt: point.t,
@@ -108,7 +99,7 @@ export class PointerAnalyzer {
       this.clickBurst.count += 1;
       this.clickBurst.lastAt = now();
       this.clickBurst.states.push(Boolean(event.target?.checked));
-      if (this.clickBurst.count >= 3 && !this.clickBurst.rageEmitted) {
+      if (this.clickBurst.count >= HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion.rage_click_min_clicks && !this.clickBurst.rageEmitted) {
         this.clickBurst.rageEmitted = true;
       }
     } else {
@@ -133,8 +124,7 @@ export class PointerAnalyzer {
 
   consumePending() {
     this.finalize();
-    const candidates = this.candidates.splice(0);
-    return candidates;
+    return this.candidates.splice(0);
   }
 
   registerAction(event, kind) {
@@ -151,7 +141,7 @@ export class PointerAnalyzer {
 
     if (!target.css_selector) return;
 
-    if (!this.clickBurst || currentTime - this.clickBurst.lastAt > 1200 || this.clickBurst.selector !== target.css_selector) {
+    if (!this.clickBurst || currentTime - this.clickBurst.lastAt > HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion.click_burst_gap_ms || this.clickBurst.selector !== target.css_selector) {
       this.clickBurst = {
         startedAt: currentTime,
         lastAt: currentTime,
@@ -197,7 +187,7 @@ export class PointerAnalyzer {
       angleDeltas.push(normalizeAngleDelta(angles[index] - angles[index - 1]));
     }
 
-    const directionChanges = angleDeltas.filter((delta) => Math.abs(delta) > Math.PI / 4).length;
+    const directionChanges = angleDeltas.filter((delta) => Math.abs(delta) > HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion.direction_change_angle_radians).length;
     const targetEntries = Array.from(segment.targets.entries());
     const dominantEntry = targetEntries.sort((a, b) => b[1] - a[1])[0];
     const dominantTarget = dominantEntry ? dominantEntry[1] : describeTargetElement(null);
@@ -244,7 +234,8 @@ export class PointerAnalyzer {
 
   buildHoverCandidate({ segment, closedAt, target, duration, xRange, yRange, positionMean }) {
     const spread = Math.max(xRange, yRange);
-    if (duration < 1500 || spread > 15 || segment.actionCount > 0) return [];
+    const rules = HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.hover_prolonged;
+    if (duration < rules.min_duration_ms || spread > rules.max_spread_px || segment.actionCount > 0) return [];
 
     return [
       createHeuristicCandidate('hover_prolonged_candidate', target, segment.startedAt, closedAt, {
@@ -263,7 +254,13 @@ export class PointerAnalyzer {
   }
 
   buildVisualSearchCandidate({ closedAt, target, duration, moveCount, movementDensity, actionCount, boundingArea, totalDistance }) {
-    if (duration < 3000 || moveCount < 12 || actionCount > 1 || movementDensity < 4) return [];
+    const rules = HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.visual_search_burst;
+    if (
+      duration < rules.min_duration_ms ||
+      moveCount < rules.min_move_count ||
+      actionCount > rules.max_action_count ||
+      movementDensity < rules.min_movement_density_per_second
+    ) return [];
 
     return [
       createHeuristicCandidate('visual_search_burst_candidate', target, closedAt - duration, closedAt, {
@@ -278,7 +275,13 @@ export class PointerAnalyzer {
   }
 
   buildErraticCandidate({ closedAt, target, duration, moveCount, pathEfficiency, directionChanges, angularVariance, totalDistance }) {
-    if (duration < 1000 || moveCount < 6 || pathEfficiency > 0.7 || directionChanges < 4) return [];
+    const rules = HEURISTIC_THRESHOLDS.interaction_patterns.pointer_motion.erratic_motion;
+    if (
+      duration < rules.min_duration_ms ||
+      moveCount < rules.min_move_count ||
+      pathEfficiency > rules.max_path_efficiency ||
+      directionChanges < rules.min_direction_changes
+    ) return [];
 
     return [
       createHeuristicCandidate('erratic_motion_candidate', target, closedAt - duration, closedAt, {

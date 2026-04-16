@@ -1,20 +1,5 @@
-const TARGET_KEYS = [
-  'css_selector',
-  'tagName',
-  'inputType',
-  'name',
-  'labelText',
-  'formId',
-  'sectionTitle',
-];
-
-function normalizeTarget(target = {}) {
-  const normalized = {};
-  for (const key of TARGET_KEYS) {
-    normalized[key] = target[key] ?? null;
-  }
-  return normalized;
-}
+import { normalizeHeuristicTarget } from './candidate-builder.js';
+import { HEURISTIC_THRESHOLDS } from './thresholds.js';
 
 function buildKey(candidate) {
   return JSON.stringify({
@@ -27,7 +12,7 @@ function buildKey(candidate) {
 }
 
 export class HeuristicAggregator {
-  constructor(limit = 200) {
+  constructor(limit = HEURISTIC_THRESHOLDS.aggregation.maxItems) {
     this.limit = limit;
     this.items = [];
     this.seen = new Set();
@@ -41,7 +26,7 @@ export class HeuristicAggregator {
       type: candidate.type,
       timestamp_start: candidate.timestamp_start,
       timestamp_end: candidate.timestamp_end ?? candidate.timestamp_start,
-      target: normalizeTarget(candidate.target),
+      target: normalizeHeuristicTarget(candidate.target),
       metrics: candidate.metrics ?? {},
     };
 

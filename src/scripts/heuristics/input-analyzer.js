@@ -1,18 +1,9 @@
-import { describeTargetElement } from './semantic-resolver.js';
+import { describeTargetElement } from '../semantic-resolver.js';
+import { HEURISTIC_THRESHOLDS } from './thresholds.js';
+import { createHeuristicCandidate } from './candidate-builder.js';
 
 function now() {
   return Date.now();
-}
-
-function createHeuristicCandidate(type, target, startedAt, endedAt, metrics) {
-  return {
-    kind: 'heuristic_candidate',
-    type,
-    timestamp_start: startedAt,
-    timestamp_end: endedAt,
-    target,
-    metrics,
-  };
 }
 
 export class InputAnalyzer {
@@ -86,7 +77,7 @@ export class InputAnalyzer {
     if (!selector) return;
 
     const session = this.ensureSession(target);
-    if (session.lastInteractionAt && currentTime - session.lastInteractionAt > 2500) {
+    if (session.lastInteractionAt && currentTime - session.lastInteractionAt > HEURISTIC_THRESHOLDS.interaction_patterns.form_interaction.local_hesitation.min_gap_ms) {
       this.localHesitationCandidates.push(createHeuristicCandidate('local_hesitation_candidate', session.target, session.lastInteractionAt, currentTime, {
         gap_ms: currentTime - session.lastInteractionAt,
         previous_kind: session.lastInteractionKind,
@@ -189,7 +180,7 @@ export class InputAnalyzer {
           this.endedAt = currentTime;
         },
         toCandidate() {
-          if (this.revisionCount < 2 && this.deleteCount === 0 && this.revisitCount === 0) return null;
+          if (this.revisionCount < HEURISTIC_THRESHOLDS.interaction_patterns.form_interaction.input_revision.min_revision_count && this.deleteCount === 0 && this.revisitCount === 0) return null;
 
           return createHeuristicCandidate('input_revision_candidate', this.target, this.startedAt || this.endedAt || now(), this.endedAt || now(), {
             revision_count: this.revisionCount,
