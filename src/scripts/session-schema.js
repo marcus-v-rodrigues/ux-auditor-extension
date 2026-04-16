@@ -19,6 +19,12 @@ export function createPrivacyState() {
   };
 }
 
+function hasMeaningfulSessionMeta(sessionMeta) {
+  if (!sessionMeta || typeof sessionMeta !== 'object') return false;
+
+  return Object.values(sessionMeta).some((value) => value !== null && value !== undefined);
+}
+
 export function createEmptySessionDraft(overrides = {}) {
   return {
     session_meta: {
@@ -72,7 +78,7 @@ export function mergeSessionFragment(target, fragment) {
     current.push(...incoming);
   };
 
-  if (fragment.session_meta) {
+  if (hasMeaningfulSessionMeta(fragment.session_meta)) {
     target.session_meta = {
       ...target.session_meta,
       ...fragment.session_meta,

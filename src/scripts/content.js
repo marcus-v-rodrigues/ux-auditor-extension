@@ -9,11 +9,13 @@ import { runAxePreliminaryAnalysis } from './axe-runner.js';
 import { createEmptySessionDraft, mergeSessionFragment } from './session-schema.js';
 import { buildExportPayload } from './payload-builder.js';
 import { HEURISTIC_THRESHOLDS } from './heuristics/thresholds.js';
+import { detectFieldFormatMismatch } from './heuristics/field-format.js';
 
 let stopFn = null;
 let eventBuffer = [];
 let pendingFragment = createEmptySessionDraft();
 let sessionDraft = createEmptySessionDraft();
+let latestSemantics = null;
 let flushTimer = null;
 let flushInFlight = false;
 let sessionStarted = false;
@@ -258,6 +260,7 @@ async function captureCheckpoint(trigger, context = {}) {
   const task = (async () => {
     try {
       const semantics = collectPageSemantics(document);
+      latestSemantics = semantics;
       interactionSummarizer.setSemanticSnapshot(semantics);
 
       const fragment = {
@@ -435,8 +438,13 @@ function hasPendingFragment() {
 function finalizeSessionState() {
   sessionDraft.session_meta.ended_at = Date.now();
   interactionSummarizer.finalizePending();
-  mergeSessionFragment(pendingFragment, interactionSummarizer.consumePending());
+  const interactionFragment = interactionSummarizer.consumePending();
+  mergeSessionFragment(pendingFragment, interactionFragment);
   mergeSessionFragment(pendingFragment, uiDynamicsTracker.consumePending());
+  mergeSessionFragment(
+    pendingFragment,
+    deriveFieldFormatEvidence(latestSemantics || pendingFragment.page_semantics, interactionFragment),
+  );
 }
 
 function deriveBehavioralEvidence(interactionFragment, uiFragment) {
@@ -525,6 +533,72 @@ function deriveBehavioralEvidence(interactionFragment, uiFragment) {
   }
 
   return { accessibility, usability };
+}
+
+function deriveFieldFormatEvidence(semantics, interactionFragment) {
+  const usability = [];
+  const typingMetrics = interactionFragment.interaction_summary?.typing_metrics_by_element || [];
+  const interactiveElements = semantics?.interactive_elements || [];
+  const interactiveBySelector = new Map(
+    interactiveElements
+      .filter((element) => element?.css_selector)
+      .map((element) => [element.css_selector, element]),
+  );
+
+  for (const metric of typingMetrics) {
+    const selector = metric.target?.css_selector;
+    if (!selector) continue;
+
+    const semanticElement = interactiveBySelector.get(selector);
+    const observedSummary = metric.observed_value_summary || null;
+    if (!semanticElement) {
+      if (observedSummary) {
+        usability.push({
+          timestamp: Date.now(),
+          kind: 'field_input_profile',
+          message: 'Resumo do valor salvo em campo interativo.',
+          evidence: {
+            selector,
+            observed_value_summary: observedSummary,
+          },
+        });
+      }
+      continue;
+    }
+
+    if (observedSummary) {
+      usability.push({
+        timestamp: Date.now(),
+        kind: 'field_input_profile',
+        message: 'Resumo do valor salvo em campo interativo.',
+        evidence: {
+          selector,
+          label: semanticElement.labelText || semanticElement.accessibleName || semanticElement.name || null,
+          expected_format: semanticElement.format_hint,
+          observed_value_summary: observedSummary,
+        },
+      });
+    }
+
+    const mismatch = detectFieldFormatMismatch(metric.observed_value_profile, semanticElement.format_hint);
+    if (!mismatch) continue;
+
+    usability.push({
+      timestamp: Date.now(),
+      kind: 'field_format_mismatch',
+      message: 'O valor final do campo não respeita a forma esperada pelo contexto semântico.',
+      evidence: {
+        selector,
+        label: semanticElement.labelText || semanticElement.accessibleName || semanticElement.name || null,
+        expected_format: semanticElement.format_hint,
+        observed_value_profile: metric.observed_value_profile,
+        observed_value_summary: observedSummary,
+        mismatch_reason: mismatch.reason,
+      },
+    });
+  }
+
+  return { accessibility: [], usability };
 }
 
 function saveData(payload) {

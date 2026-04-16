@@ -5,6 +5,7 @@ import { PointerAnalyzer } from './heuristics/pointer-analyzer.js';
 import { InputAnalyzer } from './heuristics/input-analyzer.js';
 import { ToggleAnalyzer } from './heuristics/toggle-analyzer.js';
 import { HeuristicAggregator } from './heuristics/heuristic-aggregator.js';
+import { buildValueProfile, inferFieldFormatHint, summarizeObservedValue } from './heuristics/field-format.js';
 
 function now() {
   return Date.now();
@@ -89,16 +90,38 @@ function deriveTargetMeta(element) {
       labelText: null,
       name: null,
       type: null,
+      format_hint: null,
     };
   }
+
+  const labelText = cleanText(element.getAttribute('aria-label') || element.getAttribute('placeholder') || '') || null;
+  const name = cleanText(element.getAttribute('name')) || null;
+  const type = cleanText(element.getAttribute('type')) || null;
+  const pattern = cleanText(element.getAttribute('pattern')) || null;
+  const autocomplete = cleanText(element.getAttribute('autocomplete')) || null;
+  const inputMode = cleanText(element.getAttribute('inputmode')) || null;
+  const formatHint = inferFieldFormatHint({
+    tagName: element.tagName.toLowerCase(),
+    type,
+    name,
+    placeholder: cleanText(element.getAttribute('placeholder')) || null,
+    pattern,
+    autocomplete,
+    inputMode,
+    ariaLabel: cleanText(element.getAttribute('aria-label')) || null,
+    labelText,
+    accessibleName: labelText,
+    sectionTitle: null,
+  });
 
   return {
     css_selector: getCssSelector(element),
     tagName: element.tagName.toLowerCase(),
     role: cleanText(element.getAttribute('role')) || null,
-    labelText: cleanText(element.getAttribute('aria-label') || element.getAttribute('placeholder') || '') || null,
-    name: cleanText(element.getAttribute('name')) || null,
-    type: cleanText(element.getAttribute('type')) || null,
+    labelText,
+    name,
+    type,
+    format_hint: formatHint,
   };
 }
 
@@ -291,6 +314,8 @@ export class InteractionSummarizer {
     const currentTime = now();
     const valueLength = typeof target.value === 'string' ? target.value.length : null;
     const sensitive = shouldMaskSensitiveField(target, target.value);
+    const valueProfile = buildValueProfile(target.value);
+    const formatHint = deriveTargetMeta(target).format_hint;
     let metric = this.typingMetrics.get(selector);
 
     if (!metric) {
@@ -301,6 +326,7 @@ export class InteractionSummarizer {
           role: cleanText(target.getAttribute('role')) || null,
           inputType: cleanText(target.getAttribute('type')) || null,
           formId: target.closest('form')?.id || null,
+          format_hint: formatHint,
         },
         focus_started_at: currentTime,
         first_input_at: null,
@@ -313,6 +339,9 @@ export class InteractionSummarizer {
         abandoned: false,
         reopened: 0,
         masked: sensitive,
+        format_hint: formatHint,
+        observed_value_profile: valueProfile,
+        observed_value_summary: summarizeObservedValue(valueProfile),
       };
       this.typingMetrics.set(selector, metric);
     }
@@ -325,6 +354,8 @@ export class InteractionSummarizer {
     metric.ended_at = currentTime;
     metric.value_length = valueLength;
     metric.masked = metric.masked || sensitive;
+    metric.observed_value_profile = valueProfile;
+    metric.observed_value_summary = summarizeObservedValue(valueProfile);
     metric.revisions += 1;
     metric.inserts += event.inputType && String(event.inputType).startsWith('insert') ? 1 : 0;
     metric.deletes += event.inputType && String(event.inputType).startsWith('delete') ? 1 : 0;
@@ -334,6 +365,17 @@ export class InteractionSummarizer {
     this.pointerAnalyzer.observeChange(event);
     this.toggleAnalyzer.observeChange(event);
     this.inputAnalyzer.observeChange(event);
+
+    const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : null;
+    if (!target) return;
+
+    const selector = getCssSelector(target);
+    const metric = this.typingMetrics.get(selector);
+    if (metric) {
+      metric.observed_value_profile = buildValueProfile(target.value);
+      metric.observed_value_summary = summarizeObservedValue(metric.observed_value_profile);
+      metric.ended_at = now();
+    }
   }
 
   observeBlur(event) {

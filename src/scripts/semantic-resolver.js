@@ -1,3 +1,5 @@
+import { inferFieldFormatHint } from './heuristics/field-format.js';
+
 const INTERACTIVE_SELECTOR = [
   'button',
   'a[href]',
@@ -207,6 +209,9 @@ function summarizeInteractiveElement(element, interactiveElements) {
   const role = cleanText(element.getAttribute('role'));
   const name = cleanText(element.getAttribute('name'));
   const placeholder = cleanText(element.getAttribute('placeholder'));
+  const pattern = cleanText(element.getAttribute('pattern'));
+  const autocomplete = cleanText(element.getAttribute('autocomplete'));
+  const inputMode = cleanText(element.getAttribute('inputmode'));
   const ariaLabel = cleanText(element.getAttribute('aria-label'));
   const ariaDescription = cleanText(element.getAttribute('aria-describedby'));
   const checked = 'checked' in element ? Boolean(element.checked) : undefined;
@@ -238,6 +243,19 @@ function summarizeInteractiveElement(element, interactiveElements) {
     css_selector: selector,
     formId: getFormId(element),
     sectionTitle: getSectionTitle(element) || null,
+    format_hint: inferFieldFormatHint({
+      tagName,
+      type,
+      name,
+      placeholder,
+      pattern,
+      autocomplete,
+      inputMode,
+      ariaLabel,
+      labelText: getLabelText(element) || null,
+      accessibleName: getAccessibleName(element) || null,
+      sectionTitle: getSectionTitle(element) || null,
+    }),
   };
 }
 
@@ -305,6 +323,9 @@ export function describeTargetElement(element) {
   const sectionTitle = getSectionTitle(element) || null;
   const role = cleanText(element.getAttribute('role')) || null;
   const placeholder = cleanText(element.getAttribute('placeholder')) || null;
+  const pattern = cleanText(element.getAttribute('pattern')) || null;
+  const autocomplete = cleanText(element.getAttribute('autocomplete')) || null;
+  const inputMode = cleanText(element.getAttribute('inputmode')) || null;
   const required = element.required ?? element.getAttribute('aria-required') === 'true';
   const disabled = Boolean(element.disabled);
   const checked = 'checked' in element ? Boolean(element.checked) : null;
@@ -324,6 +345,19 @@ export function describeTargetElement(element) {
     disabled,
     checked,
     visible: isVisible(element),
+    format_hint: inferFieldFormatHint({
+      tagName,
+      type: inputType,
+      name,
+      placeholder,
+      pattern,
+      autocomplete,
+      inputMode,
+      ariaLabel: cleanText(element.getAttribute('aria-label')),
+      labelText,
+      accessibleName,
+      sectionTitle,
+    }),
   };
 }
 
