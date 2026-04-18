@@ -1,39 +1,51 @@
-# Service Worker e Estado
+# Service Worker e Gestão de Estado
 
-## Função do Service Worker (`background.js`)
+O **Service Worker (`background.js`)** é o núcleo de persistência e orquestração da extensão. Ele roda de forma assíncrona e desvinculada do ciclo de vida das abas, permitindo que a gravação continue mesmo em recargas de página ou trocas de aba.
 
-O Service Worker atua como o "cérebro" persistente da extensão. Como os Content Scripts são destruídos a cada recarregamento de página, o Service Worker garante a continuidade da sessão.
+## 1. Fluxo de Vida da Sessão
 
-### Responsabilidades
-1.  **Gestão de Estado**: Mantém o objeto `recordingState` (se está gravando, timestamp de início).
-2.  **Buffer de Sessão**: Acumula fragmentos de JSON enviados pelo Content Script no `sessionDraft`.
-3.  **Sinalização**: Comunica mudanças de estado entre Popup e Content Script via mensagens.
-4.  **Badge da Extensão**: Atualiza o ícone do Chrome (ex: texto "REC" em vermelho) quando a gravação está ativa.
+O Service Worker gerencia a transição entre os estados da sessão através de mensagens `chrome.runtime`:
 
----
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: Inicialização
+    Idle --> Recording: action: startRecording (Popup)
+    Recording --> Recording: action: SESSION_FRAGMENT (Content Script)
+    Recording --> Flushing: action: stopRecording (Popup)
+    Flushing --> Idle: Finalize & Download
+```
 
-## Ciclo de Vida da Sessão
-
-1.  **`startManager`**:
-    - Limpa dados de sessões anteriores no `chrome.storage.local`.
-    - Inicializa o rascunho da sessão com metadados básicos.
-    - Notifica todas as abas ativas para iniciarem a coleta (`START_RRWEB`).
-2.  **`stopManager`**:
-    - Sinaliza o Content Script para interromper a coleta e enviar os últimos dados (`STOP_AND_FLUSH`).
-    - Consolida o rascunho final.
-    - Solicita ao Content Script que dispare o download do arquivo.
-3.  **Recuperação**:
-    - Se a página for recarregada durante uma gravação, o Content Script ao iniciar pergunta ao Background (`CHECK_STATUS`). Se o estado for `isRecording`, a coleta retoma imediatamente na mesma sessão.
+1.  **`startRecording`**: Gera um novo `session_id`, limpa o `chrome.storage.local`, inicia o cronômetro visual (badge) e notifica a aba ativa para injetar o motor `rrweb`.
+2.  **`SESSION_FRAGMENT`**: Recebe pedaços da sessão do Content Script e os mescla no rascunho global usando a função `mergeSessionFragment`.
+3.  **`stopRecording`**: Solicita um "Flush" final ao Content Script, encerra o cronômetro e dispara o processo de exportação JSON.
 
 ---
 
-## Protocolo de Mensagens
+## 2. Persistência Resiliente com `chrome.storage.local`
 
-| Ação | De | Para | Descrição |
-|------|----|------|-----------|
-| `startRecording` | Popup | Background | Inicia nova sessão. |
-| `stopRecording` | Popup | Background | Finaliza sessão atual. |
-| `CHECK_STATUS` | Content | Background | Pergunta se deve iniciar captura ao carregar página. |
-| `SESSION_FRAGMENT` | Content | Background | Envia lote de eventos/análises para persistência. |
-| `SESSION_META` | Content | Background | Sincroniza metadados da página (URL, título). |
-| `DOWNLOAD_FULL_SESSION`| Background | Content | Comando final para baixar o JSON. |
+Para evitar a perda de dados em caso de fechamento inesperado do navegador ou falha na aba, o Service Worker persiste cada fragmento recebido imediatamente:
+
+-   **Fragmentos Acumulativos**: Cada mensagem `SESSION_FRAGMENT` é concatenada ao rascunho existente.
+-   **Recuperação de Crash**: Na inicialização, o script verifica se existe uma gravação em andamento no `storage.local`. Se houver, ele tenta retomar o estado.
+
+---
+
+## 3. Feedback Visual: O Badge Timer
+
+O Service Worker controla o "badge" da extensão (o pequeno texto sobre o ícone):
+-   **Cor**: Muda para vermelho (`#FF0000`) ao iniciar a gravação.
+-   **Texto**: Atualiza a cada segundo com o formato `MM:SS` do tempo decorrido, garantindo que o pesquisador saiba exatamente quanto tempo de sessão já foi capturado.
+
+---
+
+## 4. Orquestração de Mensagens
+
+O sistema de mensagens é o "sistema nervoso" da extensão:
+
+| Ação | De -> Para | Descrição |
+| :--- | :--- | :--- |
+| `CHECK_STATUS` | CS -> BG | Content Script verifica se deve iniciar a gravação após recarga. |
+| `SESSION_FRAGMENT` | CS -> BG | Envio de dados enriquecidos (métricas, semântica). |
+| `BUFFER_EVENTS` | CS -> BG | Envio de eventos brutos do `rrweb`. |
+| `FLUSH_DONE` | CS -> BG | Sinaliza que a aba terminou de enviar dados após o comando de parada. |
+| `DOWNLOAD_FULL_SESSION` | BG -> CS | Comando final para disparar o download do JSON consolidado. |

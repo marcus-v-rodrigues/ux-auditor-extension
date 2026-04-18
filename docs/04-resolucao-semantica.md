@@ -1,28 +1,49 @@
-# Resolução Semântica
+# Resolução Semântica do DOM
 
-## O Papel do `semantic-resolver.js`
+O **`SemanticResolver`** é o componente encarregado de traduzir a árvore de nós do DOM em uma estrutura de dados rica em significado contextual. Ele responde à pergunta: "O que esse elemento representa para o usuário?".
 
-Para que as heurísticas façam sentido, o sistema precisa entender a "intenção" dos elementos da interface. O `semantic-resolver.js` transforma elementos brutos do DOM em objetos estruturados com significado.
+## 1. O Mecanismo de Identificação
 
-### Identificação de Elementos
-O sistema foca em três tipos de elementos:
-1.  **Landmarks**: Regiões estruturais (`header`, `nav`, `main`, `aside`, `footer` ou elementos com papéis ARIA correspondentes).
-2.  **Interactive Elements**: Botões, links, inputs, selects, textareas e elementos com papéis interativos (ex: `role="button"`).
-3.  **Form Groups**: Formulários (`form`) e grupos de campos (`fieldset`).
+O sistema utiliza seletores CSS otimizados para identificar elementos de interesse, dividindo-os em três categorias:
 
----
-
-## Atributos Resolvidos
-
-Para cada elemento interativo, o sistema resolve:
--   **Nomes Acessíveis**: Segue a especificação W3C (prioriza `aria-labelledby`, depois `aria-label`, depois `label[for]`, depois `placeholder` ou `title`).
--   **Hierarquia de Títulos**: Associa campos ao título da seção mais próxima (`h1`-`h6`) ou `legend` do fieldset.
--   **Bounding Box**: Posição exata (`x`, `y`, `width`, `height`) no momento da captura.
--   **CSS Selector**: Gera um seletor robusto (prioriza `id`, depois `name`, depois caminhos hierárquicos com `:nth-of-type`) para permitir re-identificação do elemento no replay.
--   **Format Hint**: Infeção da forma esperada do dado (ex: se o campo parece ser um CPF ou Telefone com base em placeholder ou máscara).
+1.  **Landmarks**: Pontos de referência estruturais (ex: `header`, `nav`, `main`, `footer`, `section[aria-label]`).
+2.  **Interativos**: Alvos que podem receber foco ou clique (ex: `button`, `a[href]`, `input`, `select`, `textarea`, `[role="button"]`, `[tabindex]`).
+3.  **Containers de Grupo**: Agrupadores semânticos (ex: `form`, `fieldset`, `[role="group"]`).
 
 ---
 
-## Lógica de Visibilidade
+## 2. Atributos Capturados por Elemento
 
-O sistema ignora elementos ocultos (`display: none`, `visibility: hidden`, `opacity: 0` ou dimensões zero). Isso garante que as heurísticas de "alvo pequeno" ou "falta de landmark" não sejam poluídas por elementos técnicos invisíveis.
+Para cada elemento interativo identificado, o `SemanticResolver` extrai um conjunto abrangente de metadados:
+
+| Atributo | Descrição |
+| :--- | :--- |
+| `css_selector` | Um seletor único gerado deterministicamente para identificar o elemento em análises futuras. |
+| `accessibleName` | O nome anunciado por leitores de tela, seguindo a ordem de precedência: `aria-label` > `aria-labelledby` > `label[for]` > `alt` > `title`. |
+| `role` | O papel semântico explícito (ARIA) ou implícito do elemento. |
+| `boundingBox` | As coordenadas `(x, y)` e dimensões `(width, height)` reais no momento do snapshot. |
+| `visualOrder` | A posição sequencial do elemento no fluxo visual de interatividade da página. |
+| `format_hint` | Uma sugestão do tipo de dado esperado no campo (ex: `email`, `date`, `credit-card`), inferida a partir de atributos como `name`, `type`, `pattern` e `inputmode`. |
+
+---
+
+## 3. Lógica de Seletores Únicos (`getCssSelector`)
+
+Diferente de seletores gerados automaticamente por navegadores, que podem ser excessivamente longos ou baseados em classes dinâmicas (ex: CSS Modules), o UX Auditor utiliza uma lógica personalizada:
+1.  Prioriza o **ID** do elemento (se único).
+2.  Utiliza o **Name** ou **Role** como qualificadores secundários.
+3.  Inclui até 2 classes CSS estáveis.
+4.  Recorre ao `nth-of-type` apenas em último caso, garantindo que o seletor seja robusto a mudanças leves de layout.
+
+---
+
+## 4. Detecção de Dinâmica de UI (Modais e Toasts)
+
+O `SemanticResolver` também inclui funções heurísticas para detectar componentes efêmeros:
+-   **`isLikelyModal`**: Identifica janelas de diálogo analisando `role="dialog"`, `aria-modal="true"` ou classes CSS contendo "modal" ou "dialog".
+-   **`isLikelyToast`**: Detecta mensagens de feedback rápido como `role="status"`, `role="alert"` ou classes contendo "toast" ou "snackbar".
+
+---
+
+## 5. Próximos Passos
+O contexto extraído por este componente é essencial para a [Análise Comportamental](05-analise-comportamental.md), onde os movimentos do mouse são "ancorados" nestes elementos semânticos.

@@ -85,8 +85,14 @@ function startRecording() {
       }
     },
     maskAllInputs: false,
+    // rrweb só chama maskInputFn para tipos habilitados aqui.
+    // Mantemos a decisão seletiva em createMaskInputFn e apenas abrimos
+    // os tipos necessários para que email/tel/texto sensível também sejam mascarados.
     maskInputOptions: {
       password: true,
+      email: true,
+      tel: true,
+      text: true,
     },
     maskInputFn: createMaskInputFn(() => getCurrentFieldContext()),
     sampling: {
