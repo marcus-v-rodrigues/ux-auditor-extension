@@ -18,34 +18,86 @@ O **UX Auditor Extension** é uma ferramenta avançada de auditoria de experiên
 O sistema opera como uma extensão Manifest V3, distribuindo responsabilidades entre três camadas principais:
 
 ```mermaid
-graph TD
-    subgraph "Navegador (Aba do Usuário)"
-        CS[Content Script]
-        RR[rrweb record]
-        SR[Semantic Resolver]
-        IS[Interaction Summarizer]
-        AX[Axe Runner]
+%%{init: { 'theme': 'dark', 'themeVariables': { 'fontSize': '14px' }, 'flowchart': { 'subGraphTitleMargin': {'bottom': 30}, 'curve': 'basis' } } }%%
+flowchart TB
+    %% ==================== CONTAINER PRINCIPAL ====================
+    subgraph Chrome["Google Chrome (Manifest V3)"]
+        
+        %% ==================== CAMADA DE INTERFACE ====================
+        subgraph Popup["Camada de Interface (Popup)"]
+            UI["Interface React 19"]
+            Polling["Mecanismo de Polling<br>(1000ms)"]
+            StatusDisplay["Exibição de Status<br>e Cronômetro"]
+        end
+
+        %% ==================== CAMADA DE ORQUESTRAÇÃO ====================
+        subgraph ServiceWorker["Camada de Orquestração (Service Worker)"]
+            SW["background.js"]
+            Storage["chrome.storage.local<br>(Persistência de Sessão)"]
+            BadgeAPI["Badge API<br>(Timer Visual)"]
+            StateManager["Gerenciador de Estado<br>(Session Draft Manager)"]
+            Schema["Session Schema<br>(Merging Logic)"]
+        end
+
+        %% ==================== CAMADA DE CAPTURA E ANÁLISE ====================
+        subgraph ContentScript["Camada de Captura e Análise (Content Script)"]
+            CS["content.js (Orchestrator)"]
+            
+            subgraph Capture["Mecanismos de Captura"]
+                RRWeb["rrweb<br>(Event Recording)"]
+                Masking["Sensitive Masking<br>(Privacidade/PII)"]
+            end
+
+            subgraph Pipeline["Pipeline de Análise Semântica e Comportamental"]
+                SR["Semantic Resolver<br>(Landmarks & A11y Tree)"]
+                IS["Interaction Summarizer<br>(Gestos e Fluxos)"]
+                UDT["UI Dynamics Tracker<br>(Mutações e Layout Shifts)"]
+                Axe["Axe Runner<br>(Auditoria A11y)"]
+            end
+
+            subgraph Heuristics["Motores de Heurísticas"]
+                HA["Heuristic Aggregator"]
+                Analyzers["Analyzers<br>(Pointer, Input, Toggle)"]
+                Format["Field Format<br>(Input Profiling)"]
+            end
+
+            DOM["DOM da Página"]
+        end
     end
 
-    subgraph "Extensão (Background)"
-        BG[Service Worker]
-        ST[(chrome.storage.local)]
-    end
+    %% ==================== CONEXÕES POPUP <-> SERVICE WORKER ====================
+    UI -->|"Solicita Status"| Polling
+    Polling -->|"chrome.runtime.sendMessage"| SW
+    SW -->|"Retorna status + timestamp"| StatusDisplay
+    UI -->|"Comando: Iniciar/Parar"| SW
 
-    subgraph "Interface (Popup)"
-        PP[React Popup]
-    end
+    %% ==================== CONEXÕES SERVICE WORKER INTERNO ====================
+    SW <-->|"Persiste Fragments"| Storage
+    SW --> BadgeAPI
+    SW --> StateManager
+    StateManager --> Schema
 
-    PP -->|Start/Stop| BG
-    BG -->|Injeta/Comanda| CS
-    CS -->|Eventos Brutos| RR
-    CS -->|Snapshots| SR
-    CS -->|Métricas| IS
-    CS -->|Auditoria| AX
-    CS -->|Fragments| BG
-    BG -->|Persiste| ST
-    ST -.->|Export| BG
-    BG -.->|Download| CS
+    %% ==================== CONEXÕES CONTENT SCRIPT INTERNO ====================
+    CS -->|"Configura e Inicia"| Capture
+    CS -->|"Orquestra Checkpoints"| Pipeline
+    Pipeline -->|"Alimenta"| HA
+    HA --> Analyzers
+    IS --> HA
+    IS --> Format
+    Capture -->|"Aplica Máscaras"| Masking
+    SR -->|"Fornece Contexto"| Pipeline
+
+    %% ==================== CONEXÕES CONTENT SCRIPT <-> DOM ====================
+    RRWeb -->|"Captura mutações"| DOM
+    UDT -->|"Observa (Mutation/Resize)"| DOM
+    SR -->|"Analisa Estrutura"| DOM
+    Axe -->|"Audit"| DOM
+
+    %% ==================== COMUNICAÇÃO INTERPROCESSOS ====================
+    CS -->|"SESSION_META"| SW
+    CS -->|"SESSION_FRAGMENT"| SW
+    SW -->|"START / STOP_AND_FLUSH"| CS
+    CS -->|"DOWNLOAD_FULL_SESSION"| UI
 ```
 
 ### Componentes:

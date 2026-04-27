@@ -7,27 +7,34 @@ O **Content Script (`content.js`)** é o motor de execução que roda no context
 O processo segue um fluxo cíclico de captura, bufferização e envio ("flush"):
 
 ```mermaid
-graph LR
-    subgraph "Observadores"
+%%{init: { 'theme': 'dark', 'themeVariables': { 'fontSize': '14px' }, 'flowchart': { 'curve': 'basis' } } }%%
+flowchart LR
+    subgraph Observadores["Observadores (Captura)"]
         RW[rrweb record]
         IS[Interaction Summarizer]
         UI[UI Dynamics Tracker]
+        SR[Semantic Resolver]
     end
 
-    subgraph "Processamento"
+    subgraph Processamento["Processamento e Heurísticas"]
+        HA[Heuristic Aggregator]
+        SR_AN[Semantic Analysis]
         BUF[(Buffer de Eventos)]
-        FRAG[Payload Builder]
     end
 
-    subgraph "Envio"
+    subgraph Envio["Envio (Flush)"]
+        FRAG[Payload Builder]
         BG[Background Fragment]
     end
 
     RW --> BUF
-    IS --> FRAG
-    UI --> FRAG
+    IS --> HA
+    UI --> HA
+    SR --> SR_AN
+    HA --> FRAG
+    SR_AN --> FRAG
     BUF -->|Threshold 50| FRAG
-    FRAG -->|sendMessage| BG
+    FRAG -->|"chrome.runtime.sendMessage"| BG
 ```
 
 ### Principais Estágios:
